@@ -1,0 +1,26 @@
+modLoader="javafml"
+loaderVersion="[47,)"
+license="MIT"
+
+[[mods]]
+modId="smartzombies"
+version="0.1.0"
+displayName="Smart Zombies"
+description='''
+Smarter zombies: field of view, hearing, memory, calling other zombies,
+wandering toward the places players spend time, and breaking weak blocks.
+'''
+
+[[dependencies.smartzombies]]
+    modId="forge"
+    mandatory=true
+    versionRange="[47,)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.smartzombies]]
+    modId="minecraft"
+    mandatory=true
+    versionRange="[1.20.1,1.21)"
+    ordering="NONE"
+    side="BOTH"
