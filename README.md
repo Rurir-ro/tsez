@@ -4,5 +4,3 @@
 блуждание к местам, где игрок проводит время, ломание слабых блоков.
 
 Все настройки: `config/smartzombies-common.toml` (появляется после первого запуска).
-
-Сборка: GitHub -> вкладка Actions -> build -> Artifacts -> smartzombies-jar.

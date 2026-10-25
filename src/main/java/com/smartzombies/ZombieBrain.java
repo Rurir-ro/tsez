@@ -129,7 +129,9 @@ public final class ZombieBrain {
         double close = ZConfig.CLOSE_SENSE.get();
         double dark = ZConfig.DARK_MULT.get();
         Vec3 eye = z.getEyePosition();
-        Vec3 look = z.getViewVector(1.0F);
+        // direction of the BODY, not the head: zombies constantly turn their heads
+        // (and look at nearby players), which made the field of view useless
+        Vec3 look = Vec3.directionFromRotation(0.0F, z.yBodyRot);
 
         Player best = null;
         double bestDist = Double.MAX_VALUE;
