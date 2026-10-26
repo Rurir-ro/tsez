@@ -6,6 +6,7 @@ import java.util.UUID;
 import java.util.WeakHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
@@ -30,6 +31,8 @@ public final class ZombieBrain {
     private static final Map<Zombie, ZombieBrain> BRAINS = new WeakHashMap<>();
 
     private boolean enabled = true;
+    private boolean lookStripped;
+    private long lastMark;
 
     // memory of the last player perceived
     private UUID perceivedPlayer;
@@ -59,8 +62,26 @@ public final class ZombieBrain {
             b = new ZombieBrain();
             b.enabled = !isExcluded(z);
             BRAINS.put(z, b);
+            if (b.enabled && ZConfig.REMOVE_LOOK_GOALS.get()) {
+                b.lookStripped = LookGoals.strip(z) > 0;
+            }
         }
         return b;
+    }
+
+    /** One short line for /smartzombies status. */
+    public String describe(Zombie z) {
+        String state;
+        if (z.getTarget() instanceof Player) {
+            state = "преследует игрока";
+        } else if (investigatePos != null) {
+            double dx = investigatePos.x - z.getX();
+            double dz = investigatePos.z - z.getZ();
+            state = "идёт к точке, до неё " + (int) Math.sqrt(dx * dx + dz * dz) + " бл";
+        } else {
+            state = "стоит или бродит";
+        }
+        return state + (lookStripped ? "" : " (ванильный взгляд)");
     }
 
     private static boolean isExcluded(Zombie z) {
@@ -178,13 +199,15 @@ public final class ZombieBrain {
 
     /** The zombie became aware of a player: remember, hunt and (optionally) shout. */
     public void notice(Zombie z, ServerLevel level, Player p, long now, boolean callOthers) {
+        boolean fresh = z.getTarget() != p;
         perceivedPlayer = p.getUUID();
         perceivedTick = now;
         lastKnownPos = p.position();
         investigatePos = null;
         tracking = true;
-        if (z.getTarget() != p) {
+        if (fresh) {
             z.setTarget(p);
+            Debug.mark(level, z, ParticleTypes.ANGRY_VILLAGER);
         }
         if (callOthers && ZConfig.CALL_ENABLED.get() && now >= callCooldownUntil) {
             call(z, level, p, now);
@@ -214,6 +237,7 @@ public final class ZombieBrain {
                 continue;
             }
             ob.startInvestigate(p.position(), now, 2);
+            Debug.mark(level, o, ParticleTypes.HAPPY_VILLAGER);
             budget--;
             if (budget <= 0) {
                 break;
@@ -235,6 +259,10 @@ public final class ZombieBrain {
             }
         }
         startInvestigate(pos, now, 2);
+        if (Debug.enabled && now - lastMark >= 20L) {
+            lastMark = now;
+            Debug.mark(level, z, ParticleTypes.NOTE);
+        }
     }
 
     // ------------------------------------------------------------------ memory

@@ -16,20 +16,19 @@ public final class Noise {
      * @param radius base radius in blocks (multiplied by the hearing setting)
      * @param source the player who made the noise, or null
      * @param except a zombie that must not react (the one making the noise), or null
+     * @return how many zombies heard it
      */
-    public static void emit(ServerLevel level, Vec3 pos, double radius, Player source, Zombie except) {
+    public static int emit(ServerLevel level, Vec3 pos, double radius, Player source, Zombie except) {
         double r = radius * ZConfig.HEARING_MULT.get();
         if (r < 1.0) {
-            return;
+            return 0;
         }
         AABB box = new AABB(pos.x - r, pos.y - r * 0.6, pos.z - r, pos.x + r, pos.y + r * 0.6, pos.z + r);
         List<Zombie> zombies = level.getEntitiesOfClass(Zombie.class, box);
-        if (zombies.isEmpty()) {
-            return;
-        }
         long now = level.getGameTime();
         double r2 = r * r;
         int budget = ZConfig.MAX_LISTENERS.get();
+        int heard = 0;
         for (Zombie z : zombies) {
             if (z == except) {
                 continue;
@@ -42,10 +41,15 @@ public final class Noise {
                 continue;
             }
             b.hear(z, level, pos, source, now);
+            heard++;
             budget--;
             if (budget <= 0) {
                 break;
             }
         }
+        if (source != null) {
+            Debug.bar(source, "Шум: радиус " + (int) r + " бл, услышали зомби: " + heard);
+        }
+        return heard;
     }
 }

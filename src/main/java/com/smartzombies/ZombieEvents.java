@@ -1,8 +1,14 @@
 package com.smartzombies;
 
+import com.mojang.brigadier.arguments.IntegerArgumentType;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import net.minecraft.commands.Commands;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -13,6 +19,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.AbstractArrow;
 import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.phys.Vec3;
+import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
 import net.minecraftforge.event.entity.living.LivingChangeTargetEvent;
@@ -30,6 +37,7 @@ public class ZombieEvents {
 
     private final Map<UUID, Vec3> lastPlayerPos = new HashMap<>();
     private final Map<UUID, Long> lastShotNoise = new HashMap<>();
+    private final Map<UUID, String> lastShotDebug = new HashMap<>();
 
     // ---------------------------------------------------------------- zombie thinking
 
@@ -159,16 +167,7 @@ public class ZombieEvents {
         if (owner != null && !(owner instanceof Player)) {
             return; // mobs shooting do not count
         }
-        ResourceLocation key = ForgeRegistries.ENTITY_TYPES.getKey(ent.getType());
-        double radius;
-        if (key != null && "minecraft".equals(key.getNamespace())) {
-            radius = (ent instanceof AbstractArrow) ? ZConfig.NOISE_ARROW.get() : 0.0;
-        } else {
-            radius = ZConfig.NOISE_PROJECTILE.get();
-        }
-        if (radius <= 0.0) {
-            return;
-        }
+
         // full-auto guns fire many bullets per second: one noise per shooter per 8 ticks is enough
         long now = level.getGameTime();
         UUID id = owner != null ? owner.getUUID() : NO_OWNER;
@@ -176,7 +175,32 @@ public class ZombieEvents {
         if (last != null && now - last < 8L) {
             return;
         }
+
+        ResourceLocation key = ForgeRegistries.ENTITY_TYPES.getKey(ent.getType());
+        double radius;
+        ShotClassifier.Result shot = null;
+        if (key != null && "minecraft".equals(key.getNamespace())) {
+            radius = (ent instanceof AbstractArrow) ? ZConfig.NOISE_ARROW.get() : 0.0;
+        } else {
+            shot = ShotClassifier.classify(ent, owner);
+            radius = shot.radius;
+        }
+        if (radius <= 0.0) {
+            return;
+        }
         lastShotNoise.put(id, now);
+
+        if (shot != null && Debug.enabled && owner instanceof ServerPlayer sp) {
+            String text = shot.text.length() > 110 ? shot.text.substring(0, 110) + "..." : shot.text;
+            String msg = "Выстрел [" + text.trim() + "] правило: " + shot.rule
+                    + ", глушитель: " + (shot.suppressed ? "да" : "нет")
+                    + ", радиус: " + (int) radius;
+            String prev = lastShotDebug.put(sp.getUUID(), msg);
+            if (!msg.equals(prev)) {
+                Debug.chat(sp, msg);
+            }
+        }
+
         Player src = owner instanceof Player pl ? pl : null;
         Noise.emit(level, ent.position(), radius, src, null);
     }
@@ -198,5 +222,51 @@ public class ZombieEvents {
         if (t % 1200L == 0L) {
             HeatMap.decay(level);
         }
+    }
+
+    // ---------------------------------------------------------------- commands
+
+    @SubscribeEvent
+    public void onRegisterCommands(RegisterCommandsEvent e) {
+        e.getDispatcher().register(
+                Commands.literal("smartzombies")
+                        .requires(src -> src.hasPermission(2))
+                        .then(Commands.literal("debug").executes(ctx -> {
+                            Debug.enabled = !Debug.enabled;
+                            String state = Debug.enabled ? "ВКЛЮЧЕНА" : "выключена";
+                            ctx.getSource().sendSuccess(() -> Component.literal("Smart Zombies: отладка " + state
+                                    + ". Частицы над зомби: нота = услышал, злой житель = заметил игрока, зелёная звезда = позвали."), false);
+                            return 1;
+                        }))
+                        .then(Commands.literal("noise").then(
+                                Commands.argument("radius", IntegerArgumentType.integer(1, 128)).executes(ctx -> {
+                                    ServerPlayer p = ctx.getSource().getPlayerOrException();
+                                    int r = IntegerArgumentType.getInteger(ctx, "radius");
+                                    int heard = Noise.emit(p.serverLevel(), p.position(), r, null, null);
+                                    ctx.getSource().sendSuccess(() -> Component.literal("Шум радиусом " + r
+                                            + ": услышали зомби: " + heard), false);
+                                    return heard;
+                                })))
+                        .then(Commands.literal("status").executes(ctx -> {
+                            ServerPlayer p = ctx.getSource().getPlayerOrException();
+                            ServerLevel level = p.serverLevel();
+                            List<Zombie> list = new ArrayList<>(
+                                    level.getEntitiesOfClass(Zombie.class, p.getBoundingBox().inflate(48.0)));
+                            list.sort(Comparator.comparingDouble(z -> z.distanceToSqr(p)));
+                            int count = list.size();
+                            ctx.getSource().sendSuccess(() -> Component.literal("Зомби в 48 блоках от вас: " + count), false);
+                            int shown = 0;
+                            for (Zombie z : list) {
+                                if (shown >= 6) {
+                                    break;
+                                }
+                                shown++;
+                                ZombieBrain b = ZombieBrain.get(z);
+                                String line = (int) Math.sqrt(z.distanceToSqr(p)) + " бл: "
+                                        + (b.isEnabled() ? b.describe(z) : "не управляется модом");
+                                ctx.getSource().sendSuccess(() -> Component.literal(line), false);
+                            }
+                            return count;
+                        })));
     }
 }

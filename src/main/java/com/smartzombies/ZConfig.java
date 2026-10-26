@@ -53,6 +53,12 @@ public final class ZConfig {
 
     // --- which mobs ---
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> EXCLUDED;
+    public static final ForgeConfigSpec.BooleanValue REMOVE_LOOK_GOALS;
+
+    // --- gun shots ---
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> SHOT_RULES;
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> SUPPRESSOR_WORDS;
+    public static final ForgeConfigSpec.DoubleValue SUPPRESSED_MULT;
 
     static {
         ForgeConfigSpec.Builder b = new ForgeConfigSpec.Builder();
@@ -86,7 +92,7 @@ public final class ZConfig {
         NOISE_EXPLOSION = b.defineInRange("noiseExplosion", 48.0, 0.0, 128.0);
         NOISE_ARROW = b.comment("Vanilla arrows/bolts being shot.")
                 .defineInRange("noiseVanillaArrow", 8.0, 0.0, 64.0);
-        NOISE_PROJECTILE = b.comment("Projectiles from other mods (this is how gun shots are detected). 0 = off.")
+        NOISE_PROJECTILE = b.comment("Projectiles from other mods (this is how gun shots are detected): noise when NO rule from [shots] matches. 0 = off.")
                 .defineInRange("noiseModdedProjectile", 40.0, 0.0, 128.0);
         HEAR_NOTICE = b.comment("If a player makes noise within this distance of a zombie, the zombie targets that player right away.")
                 .defineInRange("hearNoticeRange", 5.0, 0.0, 16.0);
@@ -137,6 +143,48 @@ public final class ZConfig {
                 .defineListAllowEmpty("excludedEntities",
                         List.of("minecraft:zombified_piglin", "minecraft:drowned"),
                         o -> o instanceof String);
+        REMOVE_LOOK_GOALS = b.comment("Remove the vanilla 'stare at nearby players' and 'randomly turn the head' behaviours. Without this a zombie turns to you and then 'sees' you.")
+                .define("removeVanillaLookGoals", true);
+        b.pop();
+
+        b.comment("Gun shot noise. Each rule is  keyword=radius  (blocks). Rules are checked from the top, the FIRST match wins.",
+                "The keyword is searched in the lowercase ids of the gun, the ammo and the bullet (for example glock, 9mm, ak47, 556).",
+                "Turn on /smartzombies debug and shoot: the chat shows exactly which text the mod read, so you can add precise rules.")
+                .push("shots");
+        SHOT_RULES = b.defineListAllowEmpty("rules",
+                List.of(
+                        // artillery, launchers
+                        "mortar=90", "rpg=80", "rocket=80", "missile=80", "launcher=70", "m320=60", "cannon=95", "grenade=8",
+                        // anti-materiel and sniper rifles
+                        "50bmg=95", "m107=95", "barrett=95", "m82=95", "m95=95", "338=90", "408=90", "cheytac=90",
+                        "m200=90", "awp=85", "sniper=80",
+                        // shotguns
+                        "12g=55", "12ga=55", "gauge=55", "shotgun=55", "m870=55", "spas=55", "benelli=55", "m1014=55",
+                        "mossberg=55", "aa12=55", "saiga=55", "ksg=55", "db_short=55", "db_long=55",
+                        // machine guns
+                        "m240=72", "m249=68", "pkm=70", "m60=70", "mg42=70", "minigun=75", "negev=68", "lmg=68", "rpk=66",
+                        // big rifle calibers
+                        "762x54=76", "30_06=76", "3006=76", "mosin=76", "svd=76", "m700=76", "m24=76", "kar98=76",
+                        // submachine guns (before pistol calibers, because they shoot those)
+                        "thompson=36", "mp5=36", "mp7=36", "mp9=34", "uzi=34", "p90=36", "vector=36", "ump45=36", "ump9=36",
+                        "mac10=34", "pp19=34", "bizon=34", "kriss=36", "scorpion=34", "smg=36", "57x28=36", "46x30=36",
+                        // battle rifles
+                        "308=72", "762x51=72", "m14=72", "m1a=72", "scar_h=72",
+                        // assault rifles
+                        "762x39=62", "545x39=58", "68x51=66", "58x42=58", "556=60", "223=58", "ak47=62", "akm=62",
+                        "ak74=58", "ak12=58", "m4a1=60", "m16=60", "hk416=60", "scar=62", "aug=58", "famas=58",
+                        "g36=58", "qbz=58", "type81=62", "type_81=62", "sks=62", "rifle=62",
+                        // pistols and revolvers
+                        "357=44", "44mag=46", "50ae=50", "deagle=50", "revolver=44", "magnum=46", "b93r=34", "10mm=34",
+                        "40sw=34", "45acp=32", "m1911=32", "9mm=30", "glock=30", "p320=30", "usp=30", "cz75=30",
+                        "beretta=30", "makarov=28", "380=26", "22lr=18", "pistol=30"),
+                o -> o instanceof String s && s.contains("="));
+        SUPPRESSOR_WORDS = b.comment("If any of these words appears in the gun's data (attachments), the shot counts as suppressed.")
+                .defineListAllowEmpty("suppressorKeywords",
+                        List.of("silenc", "suppress", "supress", "muffl"),
+                        o -> o instanceof String);
+        SUPPRESSED_MULT = b.comment("Noise radius multiplier for suppressed shots.")
+                .defineInRange("suppressedMultiplier", 0.3, 0.0, 1.0);
         b.pop();
 
         SPEC = b.build();
